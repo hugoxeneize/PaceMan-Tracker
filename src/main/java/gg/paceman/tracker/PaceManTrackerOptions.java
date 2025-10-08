@@ -22,7 +22,6 @@ public class PaceManTrackerOptions {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static PaceManTrackerOptions instance;
 
-    public String accessKey = "";
     public boolean enabledForPlugin = false;
     public boolean allowAnyWorldName = false;
     public boolean resetStatsEnabled = true;
@@ -46,7 +45,7 @@ public class PaceManTrackerOptions {
         try {
             return PaceManTrackerOptions.load();
         } catch (Exception e) {
-            PaceManTracker.logError("Failed to load PaceMan Tracker options.json! Access key is now lost!\n" + ExceptionUtil.toDetailedString(e));
+            PaceManTracker.logError("Failed to load PaceMan Tracker options.json! Options have been reset.\n" + ExceptionUtil.toDetailedString(e));
         }
         return (instance = new PaceManTrackerOptions());
     }
