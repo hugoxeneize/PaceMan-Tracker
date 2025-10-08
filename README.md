@@ -9,10 +9,9 @@ For those who don't/can't use Julti/Jingle, it can be [downloaded as an applicat
 
 ## Developing and Building
 
-Both the plugin and standalone jars can be built using `./gradlew build`.
+This repository no longer uses Gradle. Build the tracker with your preferred Java tooling (for example IntelliJ IDEA or direct `javac` invocations) and place the required dependency jars on the classpath. The application depends on Julti, Jingle, Gson, FlatLaf, the GitHub API client, and the IntelliJ GUI forms runtime. All of these jars can be obtained from the original tooling installations and reused locally for offline builds.
 
-If you intend on changing GUI portions of the code, IntelliJ IDEA must be configured in a certain way to ensure the GUI form works properly:
-- `Settings` -> `Build, Execution, Deployment` -> `Build Tools` -> `Gradle` -> `Build and run using: IntelliJ Idea`
+When editing GUI forms in IntelliJ IDEA, make sure the IDE is configured to generate Java source code for forms:
 - `Settings` -> `Editor` -> `GUI Designer` -> `Generate GUI into: Java source code`
 
 ## Offline storage format
