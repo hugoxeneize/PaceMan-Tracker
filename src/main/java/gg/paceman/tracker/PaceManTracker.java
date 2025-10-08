@@ -1,12 +1,12 @@
 package gg.paceman.tracker;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 import gg.paceman.tracker.util.ExceptionUtil;
-import gg.paceman.tracker.util.PostUtil;
-import gg.paceman.tracker.util.SleepUtil;
 import gg.paceman.tracker.util.VersionUtil;
 
 import javax.annotation.Nullable;
@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.Executors;
@@ -66,9 +67,7 @@ public class PaceManTracker {
     public static Runnable jingleQABRefresh = () -> {
     };
 
-    public static final String PACEMANGG_EVENT_ENDPOINT = "https://paceman.gg/api/sendevent";
-    private static final String PACEMANGG_TEST_ENDPOINT = "https://paceman.gg/api/test";
-    private static final int MIN_DENY_CODE = 400;
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
     static {
         START_EVENTS_MAP.put(8, new HashSet<>(Arrays.asList("rsg.enter_nether", "rsg.trade"))); // 1.8
@@ -81,6 +80,7 @@ public class PaceManTracker {
     private final StateTracker stateTracker = new StateTracker();
     private final ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
     private boolean asPlugin;
+    private final Path runStoragePath = PaceManTrackerOptions.getPaceManDir().resolve("runs.json");
 
     private String headerToSend = null;
     private boolean runOnPaceMan = false;
@@ -90,6 +90,10 @@ public class PaceManTracker {
 
     public static PaceManTracker getInstance() {
         return INSTANCE;
+    }
+
+    public Path getRunStoragePath() {
+        return this.runStoragePath;
     }
 
     public static void log(String message) {
@@ -190,21 +194,6 @@ public class PaceManTracker {
         return json.has("worldDifficulty") && json.get("worldDifficulty").getAsString().equalsIgnoreCase("peaceful");
     }
 
-    private static PaceManResponse sendToPacemanGG(String toSend) {
-        PostUtil.PostResponse response;
-        try {
-            response = PostUtil.sendData(PACEMANGG_EVENT_ENDPOINT, toSend);
-        } catch (IOException e) {
-            return new PaceManResponse(e);
-        }
-
-        if (response.code < MIN_DENY_CODE) {
-            return new PaceManResponse(PaceManResponse.Type.SUCCESS, response.message);
-        } else {
-            return new PaceManResponse(PaceManResponse.Type.DENIED, response.message);
-        }
-    }
-
     private static String sha256Hash(String input) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
@@ -223,22 +212,8 @@ public class PaceManTracker {
         }
     }
 
-    public static PostUtil.PostResponse testAccessKey(String accessKey) {
-        JsonObject testModelInput = new JsonObject();
-        testModelInput.addProperty("accessKey", accessKey);
-        try {
-            return PostUtil.sendData(PACEMANGG_TEST_ENDPOINT, testModelInput.toString());
-        } catch (IOException e) {
-            return null;
-        }
-    }
-
-    private PaceManResponse sendEventsToPacemanGG() {
-        PaceManTrackerOptions options = PaceManTrackerOptions.getInstance();
-
+    private JsonObject buildRunPayload() {
         JsonObject eventModelInput = new JsonObject();
-        eventModelInput.addProperty("accessKey", options.accessKey);
-
         if (this.headerToSend != null) {
             JsonObject latestWorldJson = new Gson().fromJson(this.headerToSend, JsonObject.class);
             JsonArray mods = latestWorldJson.getAsJsonArray("mods");
@@ -271,23 +246,33 @@ public class PaceManTracker {
             }
         });
 
-        String toSend = eventModelInput.toString();
-        PaceManTracker.logDebug("Sending exactly: " + toSend.replace(options.accessKey, "KEY_HIDDEN"));
+        return eventModelInput;
+    }
 
-        PaceManResponse response = PaceManTracker.sendToPacemanGG(toSend);
-
-        if (response.type == PaceManResponse.Type.SUCCESS && !this.runOnPaceMan && this.headerToSend != null) {
-            PaceManTracker.logDebug("Submitting reset stats");
+    private void saveRunLocally(JsonObject payload) throws IOException {
+        PaceManTrackerOptions.ensurePaceManDir();
+        JsonArray storedRuns = new JsonArray();
+        if (Files.exists(this.runStoragePath)) {
             try {
-                this.stateTracker.dumpStats(eventModelInput);
-            } catch (Throwable t) {
-                String detailedString = ExceptionUtil.toDetailedString(t);
-                PaceManTracker.logWarning("Error while submitting stats: " + detailedString);
-                PaceManTracker.logWarning("The above error only affects the NPH stats tracking.");
+                String existing = new String(Files.readAllBytes(this.runStoragePath), StandardCharsets.UTF_8);
+                if (!existing.trim().isEmpty()) {
+                    storedRuns = JsonParser.parseString(existing).getAsJsonArray();
+                }
+            } catch (Exception e) {
+                PaceManTracker.logWarning("Existing run log could not be read and will be recreated: " + ExceptionUtil.toDetailedString(e));
+                storedRuns = new JsonArray();
             }
         }
 
-        return response;
+        JsonObject entry = new JsonObject();
+        entry.addProperty("savedAt", Instant.now().toString());
+        entry.add("data", payload);
+        storedRuns.add(entry);
+
+        if (this.runStoragePath.getParent() != null) {
+            Files.createDirectories(this.runStoragePath.getParent());
+        }
+        Files.write(this.runStoragePath, GSON.toJson(storedRuns).getBytes(StandardCharsets.UTF_8));
     }
 
     private Optional<JsonObject> constructItemData() {
@@ -299,22 +284,8 @@ public class PaceManTracker {
         return Optional.empty();
     }
 
-    private PaceManResponse sendCancelToPacemanGG() {
-        JsonObject eventModelInput = new JsonObject();
-        // Access Key
-        eventModelInput.addProperty("accessKey", PaceManTrackerOptions.getInstance().accessKey);
-        // Empty Event List
-        eventModelInput.add("eventList", new JsonArray());
-        // Kill flag
-        eventModelInput.addProperty("kill", true);
-        return PaceManTracker.sendToPacemanGG(eventModelInput.toString());
-    }
-
     public boolean shouldRun() {
         PaceManTrackerOptions options = PaceManTrackerOptions.getInstance();
-        if (options.accessKey.isEmpty()) {
-            return false;
-        }
         return !this.asPlugin || options.enabledForPlugin;
     }
 
@@ -368,7 +339,7 @@ public class PaceManTracker {
 
         if (this.eventTracker.hasHeaderChanged()) {
             if (this.runOnPaceMan) {
-                this.sendCancel();
+                PaceManTracker.logDebug("Clearing saved run state for previous run.");
             }
             this.headerToSend = this.eventTracker.getCurrentHeader();
             PaceManTracker.logDebug("New Header: " + this.headerToSend);
@@ -378,7 +349,7 @@ public class PaceManTracker {
 
             boolean isRandomSpeedrunWorld = RANDOM_WORLD_PATTERN.matcher(this.eventTracker.getCurrentWorldName()).matches();
             if (!options.allowAnyWorldName && !isRandomSpeedrunWorld) {
-                PaceManTracker.logWarning("World name is not \"Random Speedrun #...\" so this run will not be on PaceMan.gg (this prevents practice maps and tourney worlds). If you want to play manually created worlds (New World) or you are Couriway then you can edit the allowAnyWorldName option in " + PaceManTrackerOptions.SAVE_PATH);
+                PaceManTracker.logWarning("World name is not \"Random Speedrun #...\" so this run will not be saved (this prevents practice maps and tourney worlds). If you want to play manually created worlds (New World) or you are Couriway then you can edit the allowAnyWorldName option in " + PaceManTrackerOptions.SAVE_PATH);
                 this.setRunProgress(RunProgress.ENDED);
             }
 
@@ -402,7 +373,7 @@ public class PaceManTracker {
         }
 
         if (this.getTimeSinceRunStart() > RUN_TOO_LONG_MILLIS) {
-            PaceManTracker.logDebug("Run started too long ago, this run won't be sent to PaceMan.gg");
+            PaceManTracker.logDebug("Run started too long ago, this run won't be saved");
             this.endRun();
         }
 
@@ -461,7 +432,7 @@ public class PaceManTracker {
                 long timeDiff = Math.abs(System.currentTimeMillis() - (Long.parseLong(parts[1]) + this.eventTracker.getRunStartTime()));
                 if (timeDiff < EVENT_RECENT_ENOUGH_MILLIS) {
                     shouldDump = true;
-                    PaceManTracker.log("Run will now be sent to PaceMan.gg!");
+                    PaceManTracker.log("Run will now be saved locally!");
                 } else {
                     PaceManTracker.logDebug(String.format("Event %s happened %d milliseconds ago (not recent enough).", eventName, timeDiff));
                 }
@@ -482,57 +453,31 @@ public class PaceManTracker {
         return START_EVENTS_MAP.getOrDefault(mcMajorRelease, DEFAULT_START_EVENTS);
     }
 
-    private void sendCancel() {
-        PaceManTracker.logDebug("Telling Paceman to cancel the run.");
-        int tries = 0;
-        // While sending gives back an error
-        while (PaceManResponse.Type.SEND_ERROR == (
-                this.sendCancelToPacemanGG()
-        ).type) {
-            if (++tries < 5) {
-                // Wait 5 seconds on failure before retry.
-                PaceManTracker.logError("Failed to tell PaceMan.gg to cancel the run, retrying in 5 seconds...");
-                SleepUtil.sleep(5000);
-            } else {
-                break;
-            }
-        }
-        // If the response was a denial (400+ response code), it is probably because there is no run to cancel, so we have succeeded anyway.
-        this.runOnPaceMan = false;
-    }
-
     private long getTimeSinceRunStart() {
         return Math.abs(System.currentTimeMillis() - this.eventTracker.getRunStartTime());
     }
 
     private void dumpToPacemanGG() {
-        PaceManTracker.logDebug("Dumping to paceman");
-        PaceManResponse response;
-        int tries = 0;
-        // While sending gives back an error
-        while (PaceManResponse.Type.SEND_ERROR == (response = this.sendEventsToPacemanGG()).type) {
-            if (++tries < 5) {
-                // Wait 5 seconds on failure before retry.
-                PaceManTracker.logError("Failed to send to PaceMan.gg, retrying in 5 seconds...");
-                SleepUtil.sleep(5000);
-            } else {
-                break;
+        PaceManTracker.logDebug("Saving run data locally");
+        JsonObject payload = this.buildRunPayload();
+        try {
+            this.saveRunLocally(payload);
+            if (!this.runOnPaceMan && this.headerToSend != null) {
+                PaceManTracker.logDebug("Saving reset stats locally");
+                try {
+                    this.stateTracker.dumpStats(payload);
+                } catch (Throwable t) {
+                    String detailedString = ExceptionUtil.toDetailedString(t);
+                    PaceManTracker.logWarning("Error while storing stats: " + detailedString);
+                    PaceManTracker.logWarning("The above error only affects the NPH stats tracking.");
+                }
             }
-        }
-        if (response.type == PaceManResponse.Type.DENIED) {
-            // Deny response = cancel the run
-            PaceManTracker.logError("PaceMan.gg denied run data, no more data will be sent for this run.");
-            PaceManTracker.logError("Deny message: " + response.message.replace(PaceManTrackerOptions.getInstance().accessKey, "KEY_HIDDEN"));
-            this.endRun();
-        } else if (response.type == PaceManResponse.Type.SEND_ERROR) {
-            PaceManTracker.logError("Failed to send to PaceMan.gg after a couple tries, no more data will be sent for this run.");
-            PaceManTracker.logError("Error message: " + response.message.replace(PaceManTrackerOptions.getInstance().accessKey, "KEY_HIDDEN"));
-            this.endRun();
-        } else {
-            PaceManTracker.logDebug("Successfully sent to PaceMan.gg");
             this.headerToSend = null;
             this.eventsToSend.clear();
             this.runOnPaceMan = true;
+        } catch (IOException e) {
+            PaceManTracker.logError("Failed to save run locally: " + ExceptionUtil.toDetailedString(e));
+            this.endRun();
         }
     }
 
@@ -555,36 +500,12 @@ public class PaceManTracker {
         }
 
         // Do cleanup
-        if (this.runOnPaceMan) {
-            this.sendCancel();
-        }
+        this.runOnPaceMan = false;
         this.stateTracker.stop();
     }
 
     private enum RunProgress {
         NONE, STARTING, PACING, ENDED
-    }
-
-    @SuppressWarnings("")
-    static class PaceManResponse {
-        Type type;
-        String message;
-
-        PaceManResponse(Type type, String message) {
-            this.type = type;
-            this.message = message;
-        }
-
-        PaceManResponse(Throwable t) {
-            this.type = Type.SEND_ERROR;
-            this.message = ExceptionUtil.toDetailedString(t);
-        }
-
-        enum Type {
-            SUCCESS, // < 400 response
-            DENIED, // >= 400 response
-            SEND_ERROR // error while trying to send
-        }
     }
 
 }

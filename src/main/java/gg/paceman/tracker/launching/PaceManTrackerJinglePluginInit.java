@@ -90,7 +90,6 @@ public class PaceManTrackerJinglePluginInit {
         JingleGUI.get().registerQuickActionButton(0, () -> {
             PaceManTrackerOptions options = PaceManTrackerOptions.getInstance();
             if (options == null) return null;
-            if (options.accessKey.isEmpty()) return null;
             return JingleGUI.makeButton(
                     options.enabledForPlugin ? "Disable PaceMan" : "Enable PaceMan",
                     () -> {

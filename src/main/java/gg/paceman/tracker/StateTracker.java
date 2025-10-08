@@ -1,21 +1,28 @@
 package gg.paceman.tracker;
 
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import gg.paceman.tracker.util.ExceptionUtil;
-import gg.paceman.tracker.util.PostUtil;
 import gg.paceman.tracker.util.SleepUtil;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 public class StateTracker {
 
-    private static final String SUBMIT_STATS_ENDPOINT = "https://paceman.gg/stats/api/submitStats/";
+    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private final int breakThreshold = 5000;
     // cap each overworld segment to at most 10 minutes in case of afk
     private final int maxPlayTime = 1000 * 60 * 10;
@@ -49,6 +56,8 @@ public class StateTracker {
     private long pauseTime = 0;
     private long netherStart = 0;
     private long netherTime = 0;
+
+    private final Path statsStoragePath = PaceManTrackerOptions.getPaceManDir().resolve("stats.json");
 
     public void start() {
         this.executor.scheduleAtFixedRate(this::tickResetCheck, 0, 3, TimeUnit.SECONDS);
@@ -266,14 +275,24 @@ public class StateTracker {
 
     public void dumpStats(JsonObject data) {
         if (!PaceManTrackerOptions.getInstance().resetStatsEnabled) {
-            PaceManTracker.logDebug("Not submitting stats since user opted out");
+            PaceManTracker.logDebug("Not saving stats since user opted out");
             return;
         }
         JsonObject gameData = data.getAsJsonObject("gameData");
-        String mods = gameData.getAsJsonArray("modList").toString();
-        if (!mods.contains("seedqueue") || !mods.contains("state-output")) {
-            PaceManTracker.logWarning("Could not submit reset stats as either SeedQueue or State Output is missing");
-            return;
+        Set<String> requiredMods = PaceManTrackerOptions.getInstance().getRequiredStatsMods();
+        if (!requiredMods.isEmpty()) {
+            Set<String> installedMods = this.collectInstalledModIds(gameData.getAsJsonArray("modList"));
+            Set<String> missingMods = new LinkedHashSet<>();
+            for (String required : requiredMods) {
+                boolean present = installedMods.stream().anyMatch(mod -> mod.equalsIgnoreCase(required));
+                if (!present) {
+                    missingMods.add(required);
+                }
+            }
+            if (!missingMods.isEmpty()) {
+                PaceManTracker.logWarning("Could not save reset stats because required mods are missing: " + missingMods);
+                return;
+            }
         }
 
         int newResets = this.resets - this.lastResets;
@@ -282,11 +301,8 @@ public class StateTracker {
         long diff = Math.min(this.maxPlayTime, System.currentTimeMillis() - this.playingStart);
         this.playTime += diff;
 
-        String accessKey = data.get("accessKey").getAsString();
-
         JsonObject input = new JsonObject();
-        input.addProperty("gameData", gameData.toString());
-        input.addProperty("accessKey", accessKey);
+        input.add("gameData", gameData);
         input.addProperty("wallTime", this.wallTime);
         input.addProperty("playTime", this.playTime);
         input.addProperty("netherTime", this.netherTime);
@@ -303,15 +319,59 @@ public class StateTracker {
         this.netherStart = System.currentTimeMillis();
 
         try {
-            String toSend = input.toString();
-            PaceManTracker.logDebug("Sending reset stats: " + toSend.replace(accessKey, "KEY_HIDDEN"));
-            PostUtil.PostResponse out = PostUtil.sendData(SUBMIT_STATS_ENDPOINT, input.toString());
-            int res = out.getCode();
-            PaceManTracker.logDebug("Stats Response " + res + ": " + out.getMessage());
+            this.saveStatsLocally(input);
+            PaceManTracker.logDebug("Saved reset stats locally");
         } catch (Throwable t) {
             String detailedString = ExceptionUtil.toDetailedString(t);
-            PaceManTracker.logError("Stats submission encountered an error: " + detailedString);
+            PaceManTracker.logError("Stats saving encountered an error: " + detailedString);
         }
+    }
+
+    private Set<String> collectInstalledModIds(JsonArray modList) {
+        Set<String> installed = new LinkedHashSet<>();
+        if (modList == null) {
+            return installed;
+        }
+        for (JsonElement element : modList) {
+            if (element == null || element.isJsonNull()) {
+                continue;
+            }
+            if (element.isJsonObject()) {
+                JsonObject mod = element.getAsJsonObject();
+                if (mod.has("id")) {
+                    installed.add(mod.get("id").getAsString());
+                }
+            } else if (element.isJsonPrimitive()) {
+                installed.add(element.getAsString());
+            }
+        }
+        return installed;
+    }
+
+    private void saveStatsLocally(JsonObject stats) throws IOException {
+        PaceManTrackerOptions.ensurePaceManDir();
+        JsonArray storedStats = new JsonArray();
+        if (Files.exists(this.statsStoragePath)) {
+            try {
+                String existing = new String(Files.readAllBytes(this.statsStoragePath), StandardCharsets.UTF_8);
+                if (!existing.trim().isEmpty()) {
+                    storedStats = JsonParser.parseString(existing).getAsJsonArray();
+                }
+            } catch (Exception e) {
+                PaceManTracker.logWarning("Existing stats log could not be read and will be recreated: " + ExceptionUtil.toDetailedString(e));
+                storedStats = new JsonArray();
+            }
+        }
+
+        JsonObject entry = new JsonObject();
+        entry.addProperty("savedAt", Instant.now().toString());
+        entry.add("data", stats);
+        storedStats.add(entry);
+
+        if (this.statsStoragePath.getParent() != null) {
+            Files.createDirectories(this.statsStoragePath.getParent());
+        }
+        Files.write(this.statsStoragePath, GSON.toJson(storedStats).getBytes(StandardCharsets.UTF_8));
     }
 
     public void stop() {

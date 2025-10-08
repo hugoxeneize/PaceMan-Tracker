@@ -5,27 +5,26 @@ import com.intellij.uiDesigner.core.GridLayoutManager;
 import com.intellij.uiDesigner.core.Spacer;
 import gg.paceman.tracker.PaceManTracker;
 import gg.paceman.tracker.PaceManTrackerOptions;
-import gg.paceman.tracker.util.PostUtil;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
+import java.nio.file.Path;
 import java.util.Objects;
-import java.util.function.Consumer;
 
 public class PaceManTrackerGUI extends JFrame {
     private static PaceManTrackerGUI instance = null;
     private static final boolean RESET_STATS_OPTION_USABLE = true;
     public JCheckBox enabledCheckBox;
-    private JPasswordField accessKeyField;
     private JPanel mainPanel;
     private JButton saveButton;
-    private JButton testButton;
     private JCheckBox resetStatsEnabled;
+    private JLabel storagePathLabel;
+    private JTextField requiredModsField;
     private boolean closed = false;
     private final boolean asPlugin;
 
@@ -60,17 +59,12 @@ public class PaceManTrackerGUI extends JFrame {
         this.resetStatsEnabled.addActionListener(e -> {
             this.saveButton.setEnabled(this.hasChanges());
         });
-        this.accessKeyField.setText(options.accessKey);
-        this.accessKeyField.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyReleased(KeyEvent e) {
-                if (e.getKeyChar() == '\n') {
-                    PaceManTrackerGUI.this.save();
-                }
-                PaceManTrackerGUI.this.updateButtons();
-            }
-
-        });
+        this.requiredModsField.setText(this.normalizeMods(options.requiredStatsMods));
+        this.attachChangeListener(this.requiredModsField);
+        Path runPath = PaceManTracker.getInstance().getRunStoragePath();
+        String pathText = runPath.toString();
+        this.storagePathLabel.setText("Runs are saved to: " + pathText);
+        this.storagePathLabel.setToolTipText(pathText);
         if (!RESET_STATS_OPTION_USABLE) {
             this.remove(this.resetStatsEnabled);
         }
@@ -80,10 +74,8 @@ public class PaceManTrackerGUI extends JFrame {
         this.saveButton.addActionListener(e -> this.save());
         this.saveButton.setEnabled(this.hasChanges());
 
-        this.testButton.addActionListener(e -> this.onPressTest());
-
         this.revalidate();
-        this.setMinimumSize(new Dimension(300, (asPlugin ? 140 : 120) + (RESET_STATS_OPTION_USABLE ? 20 : 0)));
+        this.setMinimumSize(new Dimension(300, (asPlugin ? 180 : 160) + (RESET_STATS_OPTION_USABLE ? 20 : 0)));
         this.pack();
         this.setResizable(false);
         this.setVisible(actuallyShow);
@@ -111,61 +103,24 @@ public class PaceManTrackerGUI extends JFrame {
 
     private void updateEnabledFields() {
         boolean enabled = !this.asPlugin || this.checkBoxEnabled();
-        this.accessKeyField.setEnabled(enabled);
         if (RESET_STATS_OPTION_USABLE) {
             this.resetStatsEnabled.setEnabled(enabled);
         }
-    }
-
-    private void onPressTest() {
-        this.save();
-        this.testButton.setEnabled(false);
-        new Thread(() -> {
-            this.testKey();
-            this.testButton.setEnabled(true);
-        }, "test-button").start();
-    }
-
-    private void testKey() {
-        PaceManTrackerOptions options = PaceManTrackerOptions.getInstance();
-        final Consumer<String> onFailure = s -> {
-            JOptionPane.showMessageDialog(this, s, "PaceMan Tracker: Test Failed", JOptionPane.ERROR_MESSAGE);
-        };
-        final Consumer<String> onSuccess = s -> {
-            JOptionPane.showMessageDialog(this, s, "PaceMan Tracker: Test Successful", JOptionPane.INFORMATION_MESSAGE);
-        };
-
-        boolean keyEmpty = options.accessKey.trim().isEmpty();
-
-        if (this.asPlugin && !options.enabledForPlugin) {
-            onFailure.accept("Please press the enabled checkbox" + (keyEmpty ? " and enter your access key in the text box" : "") + "!");
-            return;
-        }
-
-        if (keyEmpty) {
-            onFailure.accept("Please input an access key!");
-            return;
-        }
-
-        PostUtil.PostResponse response = PaceManTracker.testAccessKey(options.accessKey);
-        if (response == null || response.getCode() >= 300) {
-            onFailure.accept(response == null ? "Access key is not valid! (no response)" : "Access key is not valid! (" + response.getCode() + ": " + response.getMessage() + ")");
-            return;
-        }
-
-        onSuccess.accept("Your access key is valid! Please make sure you have SpeedRunIGT 14.2+ installed on all your instances!");
+        this.requiredModsField.setEnabled(enabled);
     }
 
     private boolean hasChanges() {
         PaceManTrackerOptions options = PaceManTrackerOptions.getInstance();
-        return (this.asPlugin && this.checkBoxEnabled() != options.enabledForPlugin) || (this.resetStatsEnabled() != options.resetStatsEnabled) || (!Objects.equals(this.getKeyBoxText(), options.accessKey));
+        return (this.asPlugin && this.checkBoxEnabled() != options.enabledForPlugin)
+                || (this.resetStatsEnabled() != options.resetStatsEnabled)
+                || !Objects.equals(this.getRequiredModsText(), this.normalizeMods(options.requiredStatsMods));
     }
 
     private void save() {
         PaceManTrackerOptions options = PaceManTrackerOptions.getInstance();
         options.enabledForPlugin = this.checkBoxEnabled();
         options.resetStatsEnabled = this.resetStatsEnabled();
-        options.accessKey = this.getKeyBoxText().trim();
+        options.requiredStatsMods = this.getRequiredModsText();
         try {
             options.save();
         } catch (IOException ex) {
@@ -178,7 +133,6 @@ public class PaceManTrackerGUI extends JFrame {
     private void updateButtons() {
         boolean hasChanges = this.hasChanges();
         this.saveButton.setEnabled(hasChanges);
-        this.testButton.setText(hasChanges ? "Save and Test" : "Test");
     }
 
     private boolean checkBoxEnabled() {
@@ -189,8 +143,31 @@ public class PaceManTrackerGUI extends JFrame {
         return this.resetStatsEnabled.isSelected();
     }
 
-    private String getKeyBoxText() {
-        return new String(this.accessKeyField.getPassword());
+    private String getRequiredModsText() {
+        return this.normalizeMods(this.requiredModsField.getText());
+    }
+
+    private String normalizeMods(String mods) {
+        return mods == null ? "" : mods.trim();
+    }
+
+    private void attachChangeListener(JTextField field) {
+        field.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                PaceManTrackerGUI.this.updateButtons();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                PaceManTrackerGUI.this.updateButtons();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                PaceManTrackerGUI.this.updateButtons();
+            }
+        });
     }
 
     public boolean isClosed() {
@@ -221,7 +198,7 @@ public class PaceManTrackerGUI extends JFrame {
      */
     private void $$$setupUI$$$() {
         mainPanel = new JPanel();
-        mainPanel.setLayout(new GridLayoutManager(6, 2, new Insets(5, 5, 5, 5), -1, -1));
+        mainPanel.setLayout(new GridLayoutManager(7, 2, new Insets(5, 5, 5, 5), -1, -1));
         final JLabel label1 = new JLabel();
         label1.setText("PaceMan Tracker");
         mainPanel.add(label1, new GridConstraints(0, 0, 1, 2, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_FIXED, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
@@ -231,23 +208,20 @@ public class PaceManTrackerGUI extends JFrame {
         resetStatsEnabled = new JCheckBox();
         resetStatsEnabled.setText("Include resetting stats");
         mainPanel.add(resetStatsEnabled, new GridConstraints(2, 0, 1, 2, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
-        final JPanel panel1 = new JPanel();
-        panel1.setLayout(new GridLayoutManager(1, 2, new Insets(0, 0, 0, 0), -1, -1));
-        mainPanel.add(panel1, new GridConstraints(3, 0, 1, 2, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_BOTH, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, null, null, null, 0, false));
-        accessKeyField = new JPasswordField();
-        accessKeyField.setText("");
-        panel1.add(accessKeyField, new GridConstraints(0, 1, 1, 1, GridConstraints.ANCHOR_WEST, GridConstraints.FILL_HORIZONTAL, GridConstraints.SIZEPOLICY_WANT_GROW, GridConstraints.SIZEPOLICY_FIXED, null, new Dimension(150, -1), null, 0, false));
+        storagePathLabel = new JLabel();
+        storagePathLabel.setText("Runs are saved locally.");
+        mainPanel.add(storagePathLabel, new GridConstraints(3, 0, 1, 2, GridConstraints.ANCHOR_WEST, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
         final JLabel label2 = new JLabel();
-        label2.setText("Access Key:");
-        panel1.add(label2, new GridConstraints(0, 0, 1, 1, GridConstraints.ANCHOR_WEST, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_FIXED, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
+        label2.setText("Required stats mods (comma separated)");
+        mainPanel.add(label2, new GridConstraints(4, 0, 1, 1, GridConstraints.ANCHOR_WEST, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_FIXED, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
+        requiredModsField = new JTextField();
+        requiredModsField.setToolTipText("Leave blank to disable the required mod check.");
+        mainPanel.add(requiredModsField, new GridConstraints(4, 1, 1, 1, GridConstraints.ANCHOR_WEST, GridConstraints.FILL_HORIZONTAL, GridConstraints.SIZEPOLICY_WANT_GROW, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
         final Spacer spacer1 = new Spacer();
         mainPanel.add(spacer1, new GridConstraints(5, 0, 1, 2, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_VERTICAL, 1, GridConstraints.SIZEPOLICY_WANT_GROW, null, null, null, 0, false));
         saveButton = new JButton();
         saveButton.setText("Save");
-        mainPanel.add(saveButton, new GridConstraints(4, 0, 1, 1, GridConstraints.ANCHOR_EAST, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
-        testButton = new JButton();
-        testButton.setText("Test");
-        mainPanel.add(testButton, new GridConstraints(4, 1, 1, 1, GridConstraints.ANCHOR_WEST, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
+        mainPanel.add(saveButton, new GridConstraints(6, 0, 1, 2, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
     }
 
     /**
