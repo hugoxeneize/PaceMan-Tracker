@@ -11,7 +11,12 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Handles the save options for the tracker
@@ -25,6 +30,7 @@ public class PaceManTrackerOptions {
     public boolean enabledForPlugin = false;
     public boolean allowAnyWorldName = false;
     public boolean resetStatsEnabled = true;
+    public String requiredStatsMods = "seedqueue,state-output";
 
     /**
      * Load and return the options file
@@ -71,5 +77,15 @@ public class PaceManTrackerOptions {
         FileWriter writer = new FileWriter(SAVE_PATH.toFile());
         GSON.toJson(this, writer);
         writer.close();
+    }
+
+    public Set<String> getRequiredStatsMods() {
+        if (this.requiredStatsMods == null) {
+            return Collections.emptySet();
+        }
+        return Arrays.stream(this.requiredStatsMods.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 }

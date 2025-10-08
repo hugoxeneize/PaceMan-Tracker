@@ -3,6 +3,7 @@ package gg.paceman.tracker;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import gg.paceman.tracker.util.ExceptionUtil;
@@ -13,6 +14,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -276,10 +279,20 @@ public class StateTracker {
             return;
         }
         JsonObject gameData = data.getAsJsonObject("gameData");
-        String mods = gameData.getAsJsonArray("modList").toString();
-        if (!mods.contains("seedqueue") || !mods.contains("state-output")) {
-            PaceManTracker.logWarning("Could not save reset stats as either SeedQueue or State Output is missing");
-            return;
+        Set<String> requiredMods = PaceManTrackerOptions.getInstance().getRequiredStatsMods();
+        if (!requiredMods.isEmpty()) {
+            Set<String> installedMods = this.collectInstalledModIds(gameData.getAsJsonArray("modList"));
+            Set<String> missingMods = new LinkedHashSet<>();
+            for (String required : requiredMods) {
+                boolean present = installedMods.stream().anyMatch(mod -> mod.equalsIgnoreCase(required));
+                if (!present) {
+                    missingMods.add(required);
+                }
+            }
+            if (!missingMods.isEmpty()) {
+                PaceManTracker.logWarning("Could not save reset stats because required mods are missing: " + missingMods);
+                return;
+            }
         }
 
         int newResets = this.resets - this.lastResets;
@@ -312,6 +325,27 @@ public class StateTracker {
             String detailedString = ExceptionUtil.toDetailedString(t);
             PaceManTracker.logError("Stats saving encountered an error: " + detailedString);
         }
+    }
+
+    private Set<String> collectInstalledModIds(JsonArray modList) {
+        Set<String> installed = new LinkedHashSet<>();
+        if (modList == null) {
+            return installed;
+        }
+        for (JsonElement element : modList) {
+            if (element == null || element.isJsonNull()) {
+                continue;
+            }
+            if (element.isJsonObject()) {
+                JsonObject mod = element.getAsJsonObject();
+                if (mod.has("id")) {
+                    installed.add(mod.get("id").getAsString());
+                }
+            } else if (element.isJsonPrimitive()) {
+                installed.add(element.getAsString());
+            }
+        }
+        return installed;
     }
 
     private void saveStatsLocally(JsonObject stats) throws IOException {
