@@ -7,6 +7,8 @@ import gg.paceman.tracker.PaceManTracker;
 import gg.paceman.tracker.PaceManTrackerOptions;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
@@ -69,7 +71,7 @@ public class PaceManTrackerGUI extends JFrame {
         this.saveButton.setEnabled(this.hasChanges());
 
         this.revalidate();
-        this.setMinimumSize(new Dimension(300, (asPlugin ? 140 : 120) + (RESET_STATS_OPTION_USABLE ? 20 : 0)));
+        this.setMinimumSize(new Dimension(300, (asPlugin ? 180 : 160) + (RESET_STATS_OPTION_USABLE ? 20 : 0)));
         this.pack();
         this.setResizable(false);
         this.setVisible(actuallyShow);
@@ -161,7 +163,7 @@ public class PaceManTrackerGUI extends JFrame {
      */
     private void $$$setupUI$$$() {
         mainPanel = new JPanel();
-        mainPanel.setLayout(new GridLayoutManager(6, 2, new Insets(5, 5, 5, 5), -1, -1));
+        mainPanel.setLayout(new GridLayoutManager(7, 2, new Insets(5, 5, 5, 5), -1, -1));
         final JLabel label1 = new JLabel();
         label1.setText("PaceMan Tracker");
         mainPanel.add(label1, new GridConstraints(0, 0, 1, 2, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_FIXED, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));

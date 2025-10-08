@@ -1,0 +1,66 @@
+{
+  "runs.json": [
+    {
+      "savedAt": "2024-04-05T18:32:17.123Z",
+      "data": {
+        "gameData": {
+          "worldId": "9e6c602fe8441f8cb430fa8c42aa6c787a1b1c8b4c0a5b765c4f6789d0c12345",
+          "gameVersion": "1.16.1",
+          "modVersion": "14.3",
+          "category": "ANY",
+          "modList": [
+            { "id": "speedrunigt", "version": "14.3" },
+            { "id": "seedqueue", "version": "1.4.2" },
+            { "id": "state-output", "version": "2.0.0" },
+            { "id": "my-extra-mod", "version": "0.1.0" }
+          ],
+          "trackerVersion": "1.0.0-offline"
+        },
+        "eventList": [
+          "rsg.enter_nether 12345 6543",
+          "rsg.enter_bastion 45678 9876",
+          "rsg.credits 67890 12000"
+        ],
+        "timeSinceRunStart": 67890,
+        "itemData": {
+          "estimatedCounts": {
+            "minecraft:ender_pearl": 6,
+            "minecraft:obsidian": 10
+          },
+          "usages": {
+            "minecraft:ender_pearl": 2
+          },
+          "crafted": {
+            "minecraft:ender_pearl": 4
+          }
+        }
+      }
+    }
+  ],
+  "stats.json": [
+    {
+      "savedAt": "2024-04-05T18:32:17.145Z",
+      "data": {
+        "gameData": {
+          "worldId": "9e6c602fe8441f8cb430fa8c42aa6c787a1b1c8b4c0a5b765c4f6789d0c12345",
+          "gameVersion": "1.16.1",
+          "modVersion": "14.3",
+          "category": "ANY",
+          "modList": [
+            { "id": "speedrunigt", "version": "14.3" },
+            { "id": "seedqueue", "version": "1.4.2" },
+            { "id": "state-output", "version": "2.0.0" },
+            { "id": "my-extra-mod", "version": "0.1.0" }
+          ],
+          "trackerVersion": "1.0.0-offline"
+        },
+        "wallTime": 123456,
+        "playTime": 234567,
+        "netherTime": 45678,
+        "seedsPlayed": 12,
+        "resets": 34,
+        "totalResets": 789
+      }
+    }
+  ]
+}
