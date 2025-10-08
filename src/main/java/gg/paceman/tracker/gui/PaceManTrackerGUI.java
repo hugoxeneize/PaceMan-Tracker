@@ -14,7 +14,6 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.io.IOException;
 import java.nio.file.Path;
-import java.util.Objects;
 
 public class PaceManTrackerGUI extends JFrame {
     private static PaceManTrackerGUI instance = null;
@@ -24,7 +23,6 @@ public class PaceManTrackerGUI extends JFrame {
     private JButton saveButton;
     private JCheckBox resetStatsEnabled;
     private JLabel storagePathLabel;
-    private JTextField requiredModsField;
     private boolean closed = false;
     private final boolean asPlugin;
 
@@ -59,8 +57,6 @@ public class PaceManTrackerGUI extends JFrame {
         this.resetStatsEnabled.addActionListener(e -> {
             this.saveButton.setEnabled(this.hasChanges());
         });
-        this.requiredModsField.setText(this.normalizeMods(options.requiredStatsMods));
-        this.attachChangeListener(this.requiredModsField);
         Path runPath = PaceManTracker.getInstance().getRunStoragePath();
         String pathText = runPath.toString();
         this.storagePathLabel.setText("Runs are saved to: " + pathText);
@@ -106,21 +102,17 @@ public class PaceManTrackerGUI extends JFrame {
         if (RESET_STATS_OPTION_USABLE) {
             this.resetStatsEnabled.setEnabled(enabled);
         }
-        this.requiredModsField.setEnabled(enabled);
     }
 
     private boolean hasChanges() {
         PaceManTrackerOptions options = PaceManTrackerOptions.getInstance();
-        return (this.asPlugin && this.checkBoxEnabled() != options.enabledForPlugin)
-                || (this.resetStatsEnabled() != options.resetStatsEnabled)
-                || !Objects.equals(this.getRequiredModsText(), this.normalizeMods(options.requiredStatsMods));
+        return (this.asPlugin && this.checkBoxEnabled() != options.enabledForPlugin) || (this.resetStatsEnabled() != options.resetStatsEnabled);
     }
 
     private void save() {
         PaceManTrackerOptions options = PaceManTrackerOptions.getInstance();
         options.enabledForPlugin = this.checkBoxEnabled();
         options.resetStatsEnabled = this.resetStatsEnabled();
-        options.requiredStatsMods = this.getRequiredModsText();
         try {
             options.save();
         } catch (IOException ex) {
@@ -141,33 +133,6 @@ public class PaceManTrackerGUI extends JFrame {
 
     private boolean resetStatsEnabled() {
         return this.resetStatsEnabled.isSelected();
-    }
-
-    private String getRequiredModsText() {
-        return this.normalizeMods(this.requiredModsField.getText());
-    }
-
-    private String normalizeMods(String mods) {
-        return mods == null ? "" : mods.trim();
-    }
-
-    private void attachChangeListener(JTextField field) {
-        field.getDocument().addDocumentListener(new DocumentListener() {
-            @Override
-            public void insertUpdate(DocumentEvent e) {
-                PaceManTrackerGUI.this.updateButtons();
-            }
-
-            @Override
-            public void removeUpdate(DocumentEvent e) {
-                PaceManTrackerGUI.this.updateButtons();
-            }
-
-            @Override
-            public void changedUpdate(DocumentEvent e) {
-                PaceManTrackerGUI.this.updateButtons();
-            }
-        });
     }
 
     public boolean isClosed() {
@@ -211,17 +176,11 @@ public class PaceManTrackerGUI extends JFrame {
         storagePathLabel = new JLabel();
         storagePathLabel.setText("Runs are saved locally.");
         mainPanel.add(storagePathLabel, new GridConstraints(3, 0, 1, 2, GridConstraints.ANCHOR_WEST, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
-        final JLabel label2 = new JLabel();
-        label2.setText("Required stats mods (comma separated)");
-        mainPanel.add(label2, new GridConstraints(4, 0, 1, 1, GridConstraints.ANCHOR_WEST, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_FIXED, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
-        requiredModsField = new JTextField();
-        requiredModsField.setToolTipText("Leave blank to disable the required mod check.");
-        mainPanel.add(requiredModsField, new GridConstraints(4, 1, 1, 1, GridConstraints.ANCHOR_WEST, GridConstraints.FILL_HORIZONTAL, GridConstraints.SIZEPOLICY_WANT_GROW, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
         final Spacer spacer1 = new Spacer();
         mainPanel.add(spacer1, new GridConstraints(4, 0, 1, 2, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_VERTICAL, 1, GridConstraints.SIZEPOLICY_WANT_GROW, null, null, null, 0, false));
         saveButton = new JButton();
         saveButton.setText("Save");
-        mainPanel.add(saveButton, new GridConstraints(6, 0, 1, 2, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
+        mainPanel.add(saveButton, new GridConstraints(5, 0, 1, 2, GridConstraints.ANCHOR_CENTER, GridConstraints.FILL_NONE, GridConstraints.SIZEPOLICY_CAN_SHRINK | GridConstraints.SIZEPOLICY_CAN_GROW, GridConstraints.SIZEPOLICY_FIXED, null, null, null, 0, false));
     }
 
     /**

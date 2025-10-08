@@ -40,9 +40,9 @@
           <text value="Runs are saved locally."/>
         </properties>
       </component>
-      <component id="cb16" class="javax.swing.JLabel">
+      <vspacer id="3efbb">
         <constraints>
-          <grid row="4" column="0" row-span="1" col-span="1" vsize-policy="0" hsize-policy="0" anchor="8" fill="0" indent="0" use-parent-layout="false"/>
+          <grid row="4" column="0" row-span="1" col-span="2" vsize-policy="6" hsize-policy="1" anchor="0" fill="2" indent="0" use-parent-layout="false"/>
         </constraints>
         <properties>
           <text value="Required stats mods (comma separated)"/>
@@ -50,23 +50,10 @@
       </component>
       <component id="5c7de" class="javax.swing.JTextField" binding="requiredModsField">
         <constraints>
-          <grid row="4" column="1" row-span="1" col-span="1" vsize-policy="0" hsize-policy="6" anchor="8" fill="1" indent="0" use-parent-layout="false"/>
+          <grid row="5" column="0" row-span="1" col-span="2" vsize-policy="0" hsize-policy="3" anchor="0" fill="0" indent="0" use-parent-layout="false"/>
         </constraints>
         <properties>
           <toolTipText value="Leave blank to disable the required mod check."/>
-        </properties>
-      </component>
-      <vspacer id="3efbb">
-        <constraints>
-          <grid row="5" column="0" row-span="1" col-span="2" vsize-policy="6" hsize-policy="1" anchor="0" fill="2" indent="0" use-parent-layout="false"/>
-        </constraints>
-      </vspacer>
-      <component id="1554e" class="javax.swing.JButton" binding="saveButton">
-        <constraints>
-          <grid row="6" column="0" row-span="1" col-span="2" vsize-policy="0" hsize-policy="3" anchor="0" fill="0" indent="0" use-parent-layout="false"/>
-        </constraints>
-        <properties>
-          <text value="Save"/>
         </properties>
       </component>
     </children>
